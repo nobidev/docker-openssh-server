@@ -11,7 +11,7 @@ echo "User name is set to $USER_NAME"
 # set password for abc to unlock it and set sudo access
 sed -i "/${USER_NAME} ALL.*/d" /etc/sudoers
 if [[ "$SUDO_ACCESS" == "true" ]]; then
-    if [[ -n "$USER_PASSWORD" || (-n "$USER_PASSWORD_FILE" && -f "$USER_PASSWORD_FILE") ]]; then
+    if [[ (-n "$USER_PASSWORD" && "$USER_PASSWORD" != "-") || (-n "$USER_PASSWORD_FILE" && -f "$USER_PASSWORD_FILE") ]]; then
         echo "${USER_NAME} ALL=(ALL) ALL" >> /etc/sudoers
         echo "Sudo is enabled with password."
     else
@@ -28,7 +28,11 @@ if [[ -n "$USER_PASSWORD_FILE" ]] && [[ -f "$USER_PASSWORD_FILE" ]]; then
 fi
 
 USER_PASSWORD=${USER_PASSWORD:-$(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c"${1:-8}";echo;)}
-echo "${USER_NAME}:${USER_PASSWORD}" | chpasswd
+if [[ "$USER_PASSWORD" == "-" ]]; then
+    passwd -d ${USER_NAME}
+else
+    echo "${USER_NAME}:${USER_PASSWORD}" | chpasswd
+fi
 
 # symlink out ssh config directory
 if [[ ! -L /etc/ssh ]]; then
@@ -47,7 +51,13 @@ if [[ "$PASSWORD_ACCESS" == "true" ]]; then
     sed -i '/^PasswordAuthentication/c\PasswordAuthentication yes' /etc/ssh/sshd_config
     chown root:"${USER_NAME}" \
         /etc/shadow
-    echo "User/password ssh access is enabled."
+    if [[ "$USER_PASSWORD" == "-" ]]; then
+        sed -i '/^#PermitEmptyPasswords/c\PermitEmptyPasswords yes' /etc/ssh/sshd_config
+        sed -i '/^PermitEmptyPasswords/c\PermitEmptyPasswords yes' /etc/ssh/sshd_config
+        echo "User ssh access is enabled with empty password."
+    else
+        echo "User/password ssh access is enabled."
+    fi
 else
     sed -i '/^PasswordAuthentication/c\PasswordAuthentication no' /etc/ssh/sshd_config
     chown root:root \
